@@ -1,11 +1,26 @@
 ### A Pluto.jl notebook ###
-# v0.14.2
+# v0.14.7
 
 using Markdown
 using InteractiveUtils
 
 # ╔═╡ 3a537966-a37a-11eb-309d-83e7886daa79
+# to allow this notebook to run on github-pages we have to create an environment
+# on-the-fly into which we install the packages we need. If you're running this
+# notebook locally on your computer you can just remove the "Pkg"-related commands
+# below (and then use the environment from which you started pluto")
 begin
+	import Pkg
+    # activate a clean environment
+    Pkg.activate(mktempdir())
+
+    Pkg.add([
+        Pkg.PackageSpec(name="Flux"),
+        Pkg.PackageSpec(name="Plots"),
+		Pkg.PackageSpec(name="Images"),
+		Pkg.PackageSpec(name="ImageTransformations"),
+    ])
+	
 	using Flux
 	using Plots
 	using Images
@@ -198,11 +213,59 @@ Next we will generalise this by making it deeper, producing coarser intermediate
 across to the up-scaling part of the network
 """
 
-# ╔═╡ 2b6d6d6a-7035-45e8-a41b-f1baa3ccd6ba
+# ╔═╡ 11249db6-954f-4576-88f5-91983fcd5f8c
+md"""
+![](https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fmiro.medium.com%2Fmax%2F1200%2F1*f7YOaE4TWubwaFF7Z1fzNw.png&f=1&nofb=1)
+"""
 
+# ╔═╡ 2b6d6d6a-7035-45e8-a41b-f1baa3ccd6ba
+begin
+	function make_ssdn(nc_in, n_levels, n_out_features)
+		lower_level = undef
+		
+		for n in 1:n_levels
+			layers = [
+				# offset convolution with padding
+				HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+				# max-pool coarsening
+				HeightOffsetMaxPool((2,2))
+			]
+			
+			if n > 1
+				append!(layers, [
+					# skip-connetion with concatenation across lower level
+					SkipConnection(lower_level, (mx, x) -> cat(mx, x, dims=3))
+					# conv-transpose up in lower level doubled number channels
+					# so with concat that is (2+1)*nc_hd. Conv with padding
+					# to return to nc_hd channels
+					HeightOffsetConv2D((w,w), nc_hd*3 => nc_hd, LR)
+				])
+			end
+
+			append!(layers,
+				[
+				# offset convolution with padding
+				HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+				# conv-tranpose up, doubling number of channels
+				ConvTranspose((2,2), nc_hd => 2*nc_hd, stride=2)
+			])
+			
+			lower_level = Chain(layers...)
+		end
+		
+		# TODO: add in image stacking and unstacking etc
+		model = Chain(
+			HeightOffsetConv2D((w,w), nc_in => nc_hd, LR),
+			lower_level,
+			HeightOffsetConv2D((w,w), 2*nc_hd => n_out_features, LR)
+		)
+		return model
+	end
+end
 
 # ╔═╡ Cell order:
-# ╠═3a537966-a37a-11eb-309d-83e7886daa79
+# ╟─a9554a9e-e98d-4b5f-9ac2-e94fc1fe7bd0
+# ╟─3a537966-a37a-11eb-309d-83e7886daa79
 # ╠═60c259b0-98dc-4c92-9a33-6f968214e985
 # ╠═0b092962-70d5-4b3c-a23a-ed2c620c8d74
 # ╠═fef35120-bf7f-4723-89df-f7326918057c
@@ -210,7 +273,6 @@ across to the up-scaling part of the network
 # ╠═e2a42226-50b3-465a-a626-17fd7c48dfa2
 # ╠═d4dc6d71-3a68-448e-93a1-9840b66d3868
 # ╠═d7e8df50-1189-46b7-b43c-282fb86629a4
-# ╟─a9554a9e-e98d-4b5f-9ac2-e94fc1fe7bd0
 # ╟─e461e49d-fdda-4e24-9f26-c294f5b8591a
 # ╠═b5c14c5f-a920-4ea8-9928-4d016669d6e0
 # ╟─8b3e01be-5dab-48e5-8ee7-7704909caae7
@@ -220,4 +282,5 @@ across to the up-scaling part of the network
 # ╟─e20e8c33-e125-4db7-a3ec-8e763e7e7b8d
 # ╠═85b1b8eb-2357-40da-acb3-bac560c68ee0
 # ╟─fc8a7656-745f-4fa9-acd0-c9d4146f5a57
+# ╟─11249db6-954f-4576-88f5-91983fcd5f8c
 # ╠═2b6d6d6a-7035-45e8-a41b-f1baa3ccd6ba
