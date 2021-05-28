@@ -1,0 +1,143 @@
+‹¥bonds€¬cell_resultsŠÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÙM<div class="markdown"><p>First we need a height-offset convolution</p>
+</div>°persist_js_stateÂ¤mime©text/html²last_run_timestampËAØ,Eá ±¼¬rootassigneeÀ§cell_idÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6¹depends_on_disabled_cellsÂ§runtimeÍ l§erroredÂÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÙv<div class="markdown"><p>Second we need to be able to rotate the tensors around the height/width dimensions</p>
+</div>°persist_js_stateÂ¤mime©text/html²last_run_timestampËAØ,Eá À{¬rootassigneeÀ§cell_idÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255¹depends_on_disabled_cellsÂ§runtimeÍ\§erroredÂÙ$8d229c01-2952-403c-9f93-9f9727090046ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÙñ3Ã—3Ã—2 Array{Float32, 3}:
+[:, :, 1] =
+ 0.166471   1.09574   -0.255734
+ 0.727846  -0.967335   1.00208
+ 0.203059  -0.484128   0.450282
+
+[:, :, 2] =
+ 0.166471   1.09574   -0.255734
+ 0.727846  -0.967335   1.00208
+ 0.203059  -0.484128   0.450282°persist_js_stateÂ¤mimeªtext/plain²last_run_timestampËAØ,Eæc¸E¬rootassigneeÀ§cell_idÙ$8d229c01-2952-403c-9f93-9f9727090046¹depends_on_disabled_cellsÂ§runtimeÎà,u§erroredÂÙ$fcb47b57-6126-4e05-be66-4ee2ae11b12cˆ¦queuedÂ±published_objects€§runningÂ¦output…¤body¤true°persist_js_stateÂ¤mimeªtext/plain²last_run_timestampËAØ,EäûJ®¬rootassigneeÀ§cell_idÙ$fcb47b57-6126-4e05-be66-4ee2ae11b12c¹depends_on_disabled_cellsÂ§runtimeÎQ§erroredÂÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10bˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÚ[<div class="markdown"><p>The aim of this notebook is to implemented the denoising network from the paper <a href="https://arxiv.org/abs/1901.10277">High-Quality Self-Supervised Deep Image Denoising</a>. As a guide we will be using the tensorflow implementation <a href="https://github.com/NVlabs/selfsupervised-denoising">on github</a>.</p>
+</div>°persist_js_stateÂ¤mime©text/html²last_run_timestampËAØ,Eá³¬rootassigneeÀ§cell_idÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10b¹depends_on_disabled_cellsÂ§runtimeÍ3,§erroredÂÙ$ea1046a6-a470-11eb-29d3-3128f2297e71ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤body‚£msgÙ³ArgumentError: Package Flux [587475ba-b771-5e3f-ad9e-33799f191a9c] is required but does not seem to be installed:
+ - Run `Pkg.instantiate()` to install all recorded dependencies.
+ªstacktrace”…¤call¶_require(::Base.PkgId)§inlinedÂ¤fileªloading.jl¤lineÍŞ¤path¬./loading.jl…¤callµrequire(::Base.PkgId)§inlinedÂ¤fileªloading.jl¤lineÍ’¤path¬./loading.jl…¤call»require(::Module, ::Symbol)§inlinedÂ¤fileªloading.jl¤lineÍ…¤path¬./loading.jl…¤call¯top-level scope§inlinedÂ¤fileÙ/ssdn.jl#==#ea1046a6-a470-11eb-29d3-3128f2297e71¤line¤pathÙ‰/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jl#==#ea1046a6-a470-11eb-29d3-3128f2297e71°persist_js_stateÂ¤mimeÙ'application/vnd.pluto.stacktrace+object²last_run_timestampËAØ,Eä«ö¬rootassigneeÀ§cell_idÙ$ea1046a6-a470-11eb-29d3-3128f2297e71¹depends_on_disabled_cellsÂ§runtimeÀ§erroredÃÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1cˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÚª<div class="markdown"><p>We will start by implementing the &quot;blind-spot convolution&quot;. From the paper:</p>
+<blockquote>
+<p>Convolution layers To restrict the receptive field of a zero-padding convolution layer to extend only, say, upwards, the easiest solution is to offset the feature maps downwards when performing the convolution operation. For an h Ã— w kernel size, a downwards offset of k &#61; ?h/2? pixels is equivalent to using a kernel that is shifted upwards so that all weights below the center row are zero. <strong>Specifically, we first append k rows of zeros to the top of input tensor, then perform the convolution, and finally crop out the k bottom rows of the output</strong></p>
+</blockquote>
+<p>Note that in the tensorflow implementation the tensors have shape <code>NCHW</code> &#40;number in batch, channel number, height and width&#41; whereas in <code>Flux</code> the shape is <code>WHCN</code></p>
+</div>°persist_js_stateÂ¤mime©text/html²last_run_timestampËAØ,Eá Ÿo¬rootassigneeÀ§cell_idÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1c¹depends_on_disabled_cellsÂ§runtimeÍ l§erroredÂÙ$d076aa88-ca21-440e-b514-a1dc22cf487bˆ¦queuedÂ±published_objects€§runningÂ¦output…¤bodyÚ10Ã—10Ã—1Ã—12 Array{Float64, 4}:
+[:, :, 1, 1] =
+  0.530775    1.00792    0.28018    0.416248   â€¦  -0.218586   -0.553022  -0.0143856
+  0.521943   -1.46414   -0.021179   0.652851      -0.256337   -0.966431   1.21082
+  0.0361739  -0.293025  -2.15175   -0.653833      -0.0307215   1.52768    1.60307
+  0.718687   -1.33377   -0.918998   0.408417      -1.32125     1.54819    0.844998
+ -0.106672   -0.116045  -0.329777  -1.02079       -0.529896    0.330605  -0.590211
+ -0.0899103   0.815483  -1.49319   -1.40807    â€¦  -1.40973    -0.647583   0.0339247
+ -0.362156   -0.714662   0.218515  -0.202164      -0.110418   -1.16888    0.233192
+  2.19309     0.264394   0.904183   0.0823369      0.859578   -0.394015   0.151944
+  1.47798     0.27867    0.552072  -0.651198      -0.600938    1.73165    1.10886
+ -0.371096    0.352222  -2.10331    2.23519       -2.13497     0.38053    1.10001
+
+[:, :, 1, 2] =
+ -0.559371    0.0212578  -0.681424  -0.036932  â€¦  -0.618474   -0.167968  -2.82185
+ -0.485081    0.0548763  -0.529048   1.47288      -0.864693   -0.435754  -0.628307
+  0.0186867   0.403128    0.126717  -1.81274      -0.318626   -1.39321   -0.901085
+  0.504092    0.540497    0.262137  -2.20638      -0.549202    0.116363  -1.14979
+ -0.175726   -1.67059     0.750538  -0.70938      -1.23789     0.35623    0.245038
+ -0.0583571   0.619543    0.629748  -1.29826   â€¦   1.16877     0.85088   -0.794588
+ -1.35746     0.37324    -0.111073   1.11466      -0.300607    1.00259    0.420023
+  0.16034     1.16541    -1.90159    0.101166     -0.0402787   0.582146   0.74636
+ -0.721751   -1.58292    -2.25458   -1.04435      -1.55694     0.387731   1.3464
+  0.0263981  -0.911723    1.6991    -1.83107       0.234675    1.06591   -0.923403
+
+[:, :, 1, 3] =
+ -0.52263    -0.424544   -0.671766  â€¦   1.75806    -2.11203    -0.251573
+ -0.443118    0.486855    0.636444      0.583817    0.178128    0.276809
+ -1.23304    -1.86284    -1.22168      -0.257542   -0.0733436   0.488194
+  0.390828    0.728361    1.08909      -2.07153    -0.295731    0.237855
+ -1.45874     0.0791333  -0.68045      -1.70857     0.832522    0.91347
+  1.00325     3.23982    -0.981179  â€¦   0.0237768  -1.37465     1.60364
+  2.03321     1.52136    -0.13595      -0.496535    0.226317   -0.888233
+  0.0075026   1.44717     1.33349      -0.293553    0.386707   -0.947263
+ -1.022       0.153348    0.765534      0.843629    0.760434    0.549994
+  2.43517    -1.53141    -1.53351       1.27431    -0.51912     0.794128
+
+...
+
+[:, :, 1, 10] =
+ -0.0143856   1.21082    1.60307     0.844998  â€¦   0.151944    1.10886     1.10001
+ -0.553022   -0.966431   1.52768     1.54819      -0.394015    1.73165     0.38053
+ -0.218586   -0.256337  -0.0307215  -1.32125       0.859578   -0.600938   -2.13497
+  0.296184    0.860769  -0.0414004  -0.464395      0.458535    0.907963   -2.32689
+ -0.644603    1.19169    0.606576    0.512982     -0.678644   -0.398742    0.684684
+  1.61489     0.874103   1.39106    -0.346965  â€¦  -0.209505    0.0085402  -0.366966
+  0.416248    0.652851  -0.653833    0.408417      0.0823369  -0.651198    2.23519
+  0.28018    -0.021179  -2.15175    -0.918998      0.904183    0.552072   -2.10331
+  1.00792    -1.46414   -0.293025   -1.33377       0.264394    0.27867     0.352222
+  0.530775    0.521943   0.0361739   0.718687      2.19309     1.47798    -0.371096
+
+[:, :, 1, 11] =
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+
+[:, :, 1, 12] =
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0°persist_js_stateÂ¤mimeªtext/plain²last_run_timestampËAØ,EåÓË%¬rootassigneeÀ§cell_idÙ$d076aa88-ca21-440e-b514-a1dc22cf487b¹depends_on_disabled_cellsÂ§runtimeÎ9e¢°§erroredÂÙ$0256d08b-84b2-49d9-b78a-e994b11bd4c7ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤body‚£msgÙ$UndefVarError: pad_zeros not definedªstacktrace’…¤callÙ(pad_offset(::Array{Float32, 4}, ::Int64)§inlinedÂ¤fileÙ/ssdn.jl#==#0256d08b-84b2-49d9-b78a-e994b11bd4c7¤line¤pathÙ‰/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jl#==#0256d08b-84b2-49d9-b78a-e994b11bd4c7…¤call¯top-level scope§inlinedÂ¤fileÙ/ssdn.jl#==#0256d08b-84b2-49d9-b78a-e994b11bd4c7¤line¤pathÙ‰/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jl#==#0256d08b-84b2-49d9-b78a-e994b11bd4c7°persist_js_stateÂ¤mimeÙ'application/vnd.pluto.stacktrace+object²last_run_timestampËAØ,Eä¸6µ¬rootassigneeÀ§cell_idÙ$0256d08b-84b2-49d9-b78a-e994b11bd4c7¹depends_on_disabled_cellsÂ§runtimeÀ§erroredÃÙ$a0729868-a20e-4982-9f03-c30d59307e46ˆ¦queuedÂ±published_objects€§runningÂ¦output…¤body‚£msgÙ$UndefVarError: pad_zeros not definedªstacktrace’…¤callÙ;(::Main.workspace2.HeightOffsetConv2D)(::Array{Float32, 4})§inlinedÂ¤fileÙ/ssdn.jl#==#a0729868-a20e-4982-9f03-c30d59307e46¤line	¤pathÙ‰/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jl#==#a0729868-a20e-4982-9f03-c30d59307e46…¤call¯top-level scope§inlinedÂ¤fileÙ/ssdn.jl#==#a0729868-a20e-4982-9f03-c30d59307e46¤line¤pathÙ‰/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jl#==#a0729868-a20e-4982-9f03-c30d59307e46°persist_js_stateÂ¤mimeÙ'application/vnd.pluto.stacktrace+object²last_run_timestampËAØ,EäÆ#S¬rootassigneeÀ§cell_idÙ$a0729868-a20e-4982-9f03-c30d59307e46¹depends_on_disabled_cellsÂ§runtimeÀ§erroredÃ±cell_dependenciesŠÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6„´precedence_heuristic§cell_idÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6´downstream_cells_map€²upstream_cells_map‚§@md_str¨getindexÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255„´precedence_heuristic§cell_idÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255´downstream_cells_map€²upstream_cells_map‚§@md_str¨getindexÙ$8d229c01-2952-403c-9f93-9f9727090046„´precedence_heuristic§cell_idÙ$8d229c01-2952-403c-9f93-9f9727090046´downstream_cells_map¡b²upstream_cells_mapƒ¥randn£cat§Float32Ù$fcb47b57-6126-4e05-be66-4ee2ae11b12c„´precedence_heuristic§cell_idÙ$fcb47b57-6126-4e05-be66-4ee2ae11b12c´downstream_cells_map©rotate_hw‘Ù$d076aa88-ca21-440e-b514-a1dc22cf487b²upstream_cells_map‡¡:¢Ã·¦rotr90¥zeros¤size¢==¡a‘Ù$0256d08b-84b2-49d9-b78a-e994b11bd4c7Ù$57a0f39d-18d0-4d79-94e0-5f99e286d10b„´precedence_heuristic§cell_idÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10b´downstream_cells_map€²upstream_cells_map‚§@md_str¨getindexÙ$ea1046a6-a470-11eb-29d3-3128f2297e71„´precedence_heuristic§cell_idÙ$ea1046a6-a470-11eb-29d3-3128f2297e71´downstream_cells_map¤Flux²upstream_cells_map€Ù$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1c„´precedence_heuristic§cell_idÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1c´downstream_cells_map€²upstream_cells_map‚§@md_str¨getindexÙ$d076aa88-ca21-440e-b514-a1dc22cf487b„´precedence_heuristic§cell_idÙ$d076aa88-ca21-440e-b514-a1dc22cf487b´downstream_cells_map§x_input²upstream_cells_map„¥randn©rotate_hw‘Ù$fcb47b57-6126-4e05-be66-4ee2ae11b12c£cat§Float32Ù$0256d08b-84b2-49d9-b78a-e994b11bd4c7„´precedence_heuristic§cell_idÙ$0256d08b-84b2-49d9-b78a-e994b11bd4c7´downstream_cells_map„¦offset©conv_sizeªpad_offset¡a’Ù$a0729868-a20e-4982-9f03-c30d59307e46Ù$fcb47b57-6126-4e05-be66-4ee2ae11b12c²upstream_cells_map„¥randn§Float32¢Ã·©pad_zerosÙ$a0729868-a20e-4982-9f03-c30d59307e46„´precedence_heuristic§cell_idÙ$a0729868-a20e-4982-9f03-c30d59307e46´downstream_cells_map²HeightOffsetConv2D²upstream_cells_map¡:¥Tuple¢|>¤Conv­AbstractArray¤size¢=>¡a‘Ù$0256d08b-84b2-49d9-b78a-e994b11bd4c7§Integer©pad_zeros¤Pair¡-¢Ã·¢==´cell_execution_orderšÙ$ea1046a6-a470-11eb-29d3-3128f2297e71Ù$57a0f39d-18d0-4d79-94e0-5f99e286d10bÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1cÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6Ù$0256d08b-84b2-49d9-b78a-e994b11bd4c7Ù$a0729868-a20e-4982-9f03-c30d59307e46Ù$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255Ù$fcb47b57-6126-4e05-be66-4ee2ae11b12cÙ$d076aa88-ca21-440e-b514-a1dc22cf487bÙ$8d229c01-2952-403c-9f93-9f9727090046©shortpath§ssdn.jl®process_status¥ready¤pathÙa/home/runner/work/neural-networks-in-julia-by-example/neural-networks-in-julia-by-example/ssdn.jlªcell_orderšÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10bÙ$ea1046a6-a470-11eb-29d3-3128f2297e71Ù$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1cÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6Ù$0256d08b-84b2-49d9-b78a-e994b11bd4c7Ù$a0729868-a20e-4982-9f03-c30d59307e46Ù$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255Ù$fcb47b57-6126-4e05-be66-4ee2ae11b12cÙ$d076aa88-ca21-440e-b514-a1dc22cf487bÙ$8d229c01-2952-403c-9f93-9f9727090046«cell_inputsŠÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6„§cell_idÙ$ac31e05f-524f-4aaf-b4f6-007583c3acb6°running_disabledÂ¤codeÙ-md"First we need a height-offset convolution"«code_foldedÃÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255„§cell_idÙ$b4ebf1c0-68a7-4372-bf9a-1e6c35b54255°running_disabledÂ¤codeÙVmd"Second we need to be able to rotate the tensors around the height/width dimensions"«code_foldedÃÙ$8d229c01-2952-403c-9f93-9f9727090046„§cell_idÙ$8d229c01-2952-403c-9f93-9f9727090046°running_disabledÂ¤codeÙ@begin
+	b = randn(Float32, (3, 3, 1))
+	cat([b, b]...; dims=3)
+end«code_foldedÂÙ$fcb47b57-6126-4e05-be66-4ee2ae11b12c„§cell_idÙ$fcb47b57-6126-4e05-be66-4ee2ae11b12c°running_disabledÂ¤codeÙİbegin
+	function rotate_hw(x, angle)
+		if angle == 0
+			return x
+		else
+			x_rot = zeros(size(x))
+			x_rot[:,:,1,1] = rotr90(x[:,:,1,1], angle Ã· 90)
+			return x_rot
+		end
+	end
+	
+	rotate_hw(a, 90) == rotate_hw(a, -270)
+end«code_foldedÂÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10b„§cell_idÙ$57a0f39d-18d0-4d79-94e0-5f99e286d10b°running_disabledÂ¤codeÚ*md"""The aim of this notebook is to implemented the denoising network from the paper [High-Quality Self-Supervised Deep Image Denoising](https://arxiv.org/abs/1901.10277). As a guide we will be using the tensorflow implementation [on github](https://github.com/NVlabs/selfsupervised-denoising).
+"""«code_foldedÃÙ$ea1046a6-a470-11eb-29d3-3128f2297e71„§cell_idÙ$ea1046a6-a470-11eb-29d3-3128f2297e71°running_disabledÂ¤codeµbegin
+	using Flux
+end«code_foldedÂÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1c„§cell_idÙ$235a5cdd-00c6-4168-bbd7-b4d0b0c04e1c°running_disabledÂ¤codeÚ'md"""
+We will start by implementing the "blind-spot convolution". From the paper:
+
+> Convolution layers To restrict the receptive field of a zero-padding convolution layer to extend only, say, upwards, the easiest solution is to offset the feature maps downwards when performing the convolution operation. For an h Ã— w kernel size, a downwards offset of k = ?h/2? pixels is equivalent to using a kernel that is shifted upwards so that all weights below the center row are zero. **Specifically, we first append k rows of zeros to the top of input tensor, then perform the convolution, and finally crop out the k bottom rows of the output**
+
+Note that in the tensorflow implementation the tensors have shape `NCHW` (number in batch, channel number, height and width) whereas in `Flux` the shape is `WHCN`
+"""«code_foldedÃÙ$d076aa88-ca21-440e-b514-a1dc22cf487b„§cell_idÙ$d076aa88-ca21-440e-b514-a1dc22cf487b°running_disabledÂ¤codeÙybegin
+	x_input = randn(Float32, (10, 10, 1, 3))
+	
+	cat([rotate_hw(x_input, a) for a in [0, 90, 180, 270]]...; dims=4)
+end«code_foldedÂÙ$0256d08b-84b2-49d9-b78a-e994b11bd4c7„§cell_idÙ$0256d08b-84b2-49d9-b78a-e994b11bd4c7°running_disabledÂ¤codeÙ­begin
+	pad_offset(x, offset) = pad_zeros(x, (0,0, offset,0, 0,0, 0,0))
+	
+	conv_size = 3
+	a = randn(Float32, (5, 5, 1, 1))
+	offset = conv_size Ã· 2
+	pad_offset(a, offset)
+end«code_foldedÂÙ$a0729868-a20e-4982-9f03-c30d59307e46„§cell_idÙ$a0729868-a20e-4982-9f03-c30d59307e46°running_disabledÂ¤codeÚÎbegin
+	struct HeightOffsetConv2D
+		filter::Tuple{<:Integer,<:Integer}
+		ch::Pair{<:Integer,<:Integer}
+	end
+	
+	function (c::HeightOffsetConv2D)(x::AbstractArray{T}) where T
+		offset = c.filter[1] Ã· 2
+		x_offset = pad_zeros(x, (0,0, offset,0, 0,0, 0,0))
+		x_conv = Conv(c.filter, c.ch)(x_offset)
+		return x_conv[:,1:size(x)[2]-1-offset,:,:]
+	end
+	
+	# check that the shape is unchanged
+	HeightOffsetConv2D((3,3),1=>1)(a) |> size == Conv((3,3), 1=>1)(a) |> size
+end«code_foldedÂ«notebook_idÙ$275e6894-bfd0-11eb-142d-c3a69912063f«in_temp_dirÂ
