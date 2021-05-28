@@ -1,16 +1,48 @@
 ### A Pluto.jl notebook ###
-# v0.14.2
+# v0.14.7
 
 using Markdown
 using InteractiveUtils
 
 # ╔═╡ 8b41c1c0-a348-11eb-2938-f7d0c282449d
+# to allow this notebook to run on github-pages we have to create an environment
+# on-the-fly into which we install the packages we need. If you're running this
+# notebook locally on your computer you can just remove the "Pkg"-related commands
+# below (and then use the environment from which you started pluto")
 begin
+	import Pkg
+    # activate a clean environment
+    Pkg.activate(mktempdir())
+
+    Pkg.add([
+        Pkg.PackageSpec(name="Flux"),
+        Pkg.PackageSpec(name="Plots"),
+		Pkg.PackageSpec(name="Images"),
+		Pkg.PackageSpec(name="ImageTransformations"),
+    ])
+	
 	using Flux
 	using Plots
 	using Images
 	using ImageTransformations
 end
+
+# ╔═╡ bc1593d3-2eab-4306-9bb6-776fe2fbe82b
+md"""
+# Training our first model
+
+Hi!
+
+In this notebook we will find out how to create a model in `Flux` and how to train it. We'll be training a model to remove some random noise we've added to an image, so we will give it a noisy image and train it to produce the image we started with before adding noise.
+
+To start out easy we'll be creating a really simple model which just looks at the neighbouring pixels and tries its best to use these to reconstruct the original image.
+
+"""
+
+# ╔═╡ 0cc0ff7a-3cff-49de-b57d-f7b6cc29b45a
+md"""
+We're going to need some data to work with. So let's download a picture of a nice cloud (feel free to use your own example here!)
+"""
 
 # ╔═╡ 34847f89-4546-4f6d-ad21-20be7c9dfbd6
 download("http://labs.sogeti.com/wp-content/uploads/2014/03/cloud.jpg", "cloud.jpg")
@@ -18,14 +50,32 @@ download("http://labs.sogeti.com/wp-content/uploads/2014/03/cloud.jpg", "cloud.j
 # ╔═╡ 6e2e9e25-25b1-4c06-9615-e1e63b629e16
 cloud_img = load("cloud.jpg")
 
+# ╔═╡ 191cc3f8-d001-48d3-a094-b2c9dd967f5a
+md"""
+Let's have a look at what this image is actually made of once we've read in into julia. We can check the size of the image with `size` and using `typeof` we see that using `load` (from the `Images` package) we've gotten at 2D array of elements of the `RGB`-type (which are in itself stored as `UInt8`'s)."""
+
 # ╔═╡ 2d8bf1c0-d06b-47ce-b84b-5f24a36c53f7
 begin
 	img = imresize(cloud_img, ratio=0.1)
 	size(img), typeof(img)
 end
 
+# ╔═╡ 171202d4-7f42-4122-a434-787d86fb3b2b
+md"""
+But, when we're feeding data to the our model it will expect the RGB-values to be fed in as a 3rd dimension if the 3D array representing the image-extent and the three colour components (also called colour "channels" in `Flux`).
+
+Fortunately the `Images` package comes with a very handy `channelview` method which we can use to get underlying 3D array data.
+"""
+
 # ╔═╡ 11330db6-0a7c-4e17-b832-c006acbd7d5c
 arr = channelview(img)
+
+# ╔═╡ 43d0fe0d-a729-48ad-a51b-9bd6c273599d
+md"""
+The last steps are 1) we need is to make the colour "channel" dimension be the last one (rather than the first) as `Flux` expects the input data to be shaped `HWCB`, *H*eight, Width, Channel and Batch-size (we'll get to batching below, but in essense this make it possible to pass in multiple images at once to our model, treating each of them identically). And 2) the models we will work with generally work best with floating point numbers (rather than integers).
+
+To wrap all these transformations into little convenience functions we will define `image_to_arr` and `arr_to_img` below, the latter will be useful when we later want to look at the output of our model 🚀.
+"""
 
 # ╔═╡ 8c26b9a1-e82d-49e7-b2fd-99ade1439c06
 begin
@@ -33,11 +83,25 @@ begin
 	arr_to_img(arr) = colorview(RGB, permutedims(arr, (3,1,2)))
 end
 
+# ╔═╡ a4d2fb7c-b1f3-4179-82c2-4f524ece4d9c
+md"Let's check that our function works by making a heat-map plot of a single channel of our image turned into a 3D array of floats"
+
 # ╔═╡ 6d2784d3-b8b8-41b6-bda6-68345ac3209d
 heatmap(img_to_arr(img)[:,:,1])
 
+# ╔═╡ e6c4a456-53c1-4686-aa65-7adfb6d94302
+md"And using the `arr_to_img` function we get our original image back 😀"
+
 # ╔═╡ 55a2c79f-7f64-469a-b074-6745cc2e8176
 arr_to_img(img_to_arr(img))
+
+# ╔═╡ bb1e4026-db05-4a74-934d-46dbc94797ff
+md"""The very last thing we need to talk about before creating our first model is batching (or mini-batching). The idea here is that when we're training our model we don't want to improve on just a single training example at once (as that might lead to quite drastic changes to the model that only improve the results for that single example), but instead we want to make the model better for many different examples all at once (making changes that improve the model generally, rather than specifically for a single example).
+
+To achieve this we can feed multiple training examples (images in our case) together to the model all at once, and this process is called *mini-batching*. This technique is so general that all neural network frameworks dedicate a specific dimension of the input (and output) data to this batching, the "batch dimension".
+
+TODO: talk about noise here and adding multiple examples
+"""
 
 # ╔═╡ 0c2fa463-9252-43c7-9b05-10a5d7af4f9f
 begin
@@ -209,14 +273,22 @@ apply_model(img, model_ae)
 train_and_plot_model(model_ae, img)
 
 # ╔═╡ Cell order:
-# ╠═8b41c1c0-a348-11eb-2938-f7d0c282449d
+# ╟─bc1593d3-2eab-4306-9bb6-776fe2fbe82b
+# ╟─8b41c1c0-a348-11eb-2938-f7d0c282449d
+# ╟─0cc0ff7a-3cff-49de-b57d-f7b6cc29b45a
 # ╠═34847f89-4546-4f6d-ad21-20be7c9dfbd6
 # ╠═6e2e9e25-25b1-4c06-9615-e1e63b629e16
+# ╟─191cc3f8-d001-48d3-a094-b2c9dd967f5a
 # ╠═2d8bf1c0-d06b-47ce-b84b-5f24a36c53f7
+# ╟─171202d4-7f42-4122-a434-787d86fb3b2b
 # ╠═11330db6-0a7c-4e17-b832-c006acbd7d5c
+# ╟─43d0fe0d-a729-48ad-a51b-9bd6c273599d
 # ╠═8c26b9a1-e82d-49e7-b2fd-99ade1439c06
+# ╟─a4d2fb7c-b1f3-4179-82c2-4f524ece4d9c
 # ╠═6d2784d3-b8b8-41b6-bda6-68345ac3209d
+# ╟─e6c4a456-53c1-4686-aa65-7adfb6d94302
 # ╠═55a2c79f-7f64-469a-b074-6745cc2e8176
+# ╟─bb1e4026-db05-4a74-934d-46dbc94797ff
 # ╠═0c2fa463-9252-43c7-9b05-10a5d7af4f9f
 # ╠═60827b5b-0e12-44bc-a791-51228d436650
 # ╠═fc53568e-46d8-46b9-a3f4-822fa6134b27
