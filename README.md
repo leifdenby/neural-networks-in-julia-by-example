@@ -1,9 +1,9 @@
 # Hi!
 
-This repository represents my journey through learning machine learning in
-[julia](https://julialang.org/). I thought I'd turn my notes and code into
-some interactive notebooks - maybe you will find them interesting or
-useful 😀
+This repository represents my journey through teaching myself machine
+learning in [julia](https://julialang.org/). I thought I'd turn my notes
+and code into some interactive notebooks - maybe you will find them
+interesting or useful 😀
 
 The notebooks are very much work-in-progress, but the idea is to implement
 common techniques and architectures that you might come across when doing
