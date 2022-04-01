@@ -10,7 +10,7 @@ using InteractiveUtils
 # notebook locally on your computer you can just remove the "Pkg"-related commands
 # below (and then use the environment from which you started pluto")
 begin
-	import Pkg
+	# import Pkg
     # activate a clean environment
     #Pkg.activate(mktempdir())
 
@@ -25,6 +25,7 @@ begin
 	using Plots
 	using Images
 	using ImageTransformations
+	using Distributions
 end
 
 # ╔═╡ 57a0f39d-18d0-4d79-94e0-5f99e286d10b
@@ -69,19 +70,20 @@ begin
 	end
 
 	function offset(c::HalfPlaneOp)
-		n_offset = c.stencil_width ÷ 2
-		if c.stencil_width % 2 == 1
+		stencil_width = c.filter[c.dim]
+		n_offset = stencil_width ÷ 2
+		if stencil_width % 2 == 1
 			n_offset += 1
 		end
 		return n_offset
 	end
 
 	struct DummyHalfPlaneOp <: HalfPlaneOp
-		stencil_width::Integer
+		filter::Tuple{Integer, Integer}
 		dim::Integer
 	end
 
-	d_op = DummyHalfPlaneOp(3, 1)
+	d_op = DummyHalfPlaneOp((3, 3), 1)
 	v1 = randn(Float32, (3, 3, 1, 1))
 	offset(d_op, v1)
 end
@@ -89,7 +91,7 @@ end
 # ╔═╡ a0729868-a20e-4982-9f03-c30d59307e46
 begin
 	struct HalfPlaneConv2D <: HalfPlaneOp
-		stencil_width::Integer
+		filter::Tuple{<:Integer,<:Integer}
 		dim
 		conv
 	end
@@ -98,12 +100,12 @@ begin
 		filter::Tuple{<:Integer,<:Integer},
 		ch::Pair{<:Integer,<:Integer},
 		activation::Function;
-		dim=1
+		dim=1,
+		pad=0,
 	)
 		
-		conv = Conv(filter, ch, activation, pad=0)
-		stencil_width = size(conv.weight, dim)
-		HalfPlaneConv2D(stencil_width, dim, conv)
+		conv = Conv(filter, ch, activation, pad=pad)
+		HalfPlaneConv2D(size(conv.weight)[1:2], dim, conv)
 	end
 
 	
@@ -116,11 +118,15 @@ begin
 		x_offset = offset(c, x)
 		n_offset = offset(c)
 		x_conv = c.conv(x_offset)
-		
+
+		pad = c.conv.pad[c.dim]
+		i_start = 1 + pad
+		i_end = size(x_conv, c.dim) - n_offset
+
 		if c.dim == 1
-			return x_conv[1:end-n_offset,:,:,:]
+			return x_conv[i_start:i_end,:,:,:]
 		elseif c.dim == 2
-			return x_conv[:,1:end-n_offset,:,:]
+			return x_conv[:,i_start:i_end,:,:]
 		else
 			throw("Not implemented")
 		end
@@ -128,16 +134,27 @@ begin
 	
 	# check that that only the values in the half-plane contribute to the final value
 	v2 = randn(Float32, (3, 3, 1, 1))
-	offset_conv_3x3_xdim = HalfPlaneConv2D((3,3),1=>1, identity)
-	offset_conv_3x3_ydim = HalfPlaneConv2D((3,3),1=>1, identity, dim=2)
+	offset_conv_3x3_xdim = HalfPlaneConv2D((3,3),1=>1, identity, pad=0)
+	offset_conv_3x3_xdim_pad = HalfPlaneConv2D((3,3),1=>1, identity, pad=1)
+	offset_conv_3x3_ydim = HalfPlaneConv2D((3,3),1=>1, identity, pad=0, dim=2)
 
 	v2_xmod = copy(v2)
 	v2_xmod[2:3,:,:,:] .= 1
 	v2_ymod = copy(v2)
 	v2_ymod[:,2:3,:,:] .= 1	
 
-	@assert offset_conv_3x3_xdim(v2) == offset_conv_3x3_xdim(v2_xmod)
-	@assert offset_conv_3x3_ydim(v2) == offset_conv_3x3_ydim(v2_ymod)
+	#@assert offset_conv_3x3_xdim(v2) == offset_conv_3x3_xdim(v2_xmod)
+	#@assert offset_conv_3x3_xdim_pad(v2) == offset_conv_3x3_xdim_pad(v2_xmod)
+	#@assert offset_conv_3x3_xdim_pad(v2_xmod) == offset_conv_3x3_xdim_pad(v2_xmod)
+	#@assert offset_conv_3x3_ydim(v2) == offset_conv_3x3_ydim(v2_ymod)
+
+	offset_conv_3x3_xdim_pad(v2), offset_conv_3x3_xdim_pad(v2_xmod)
+
+end
+
+# ╔═╡ a2ee5775-29be-4b32-b7b4-bdf047d99ac5
+begin
+	offset_conv_3x3_xdim.conv(v2), Conv((3, 3), 1=>1, identity, pad=1)(v2), v2
 end
 
 # ╔═╡ b4ebf1c0-68a7-4372-bf9a-1e6c35b54255
@@ -146,13 +163,13 @@ md"Second we need to be able to rotate the tensors around the height/width dimen
 # ╔═╡ d076aa88-ca21-440e-b514-a1dc22cf487b
 begin
 	struct HalfPlaneMaxPool2D <: HalfPlaneOp
-		stencil_width::Integer
+		filter::Tuple{Integer,Integer}
 		dim::Integer
 	end
 	
 	function (c::HalfPlaneMaxPool2D)(x::AbstractArray{T}) where T
 		x_offset = offset(c, x)
-		MaxPool((c.stencil_width, c.stencil_width), pad=0)(x_offset)
+		MaxPool(c.filter, pad=0)(x_offset)
 	end
 
 	v3 = randn(Float32, (3, 3, 1, 1))
@@ -161,8 +178,8 @@ begin
 	v3_ydim = copy(v3)
 	v3_ydim[:,2:3,:,:] .= 0
 	
-	@assert HalfPlaneMaxPool2D(3, 1)(v3_xdim) == MaxPool((3, 3))(v3_xdim)
-	@assert HalfPlaneMaxPool2D(3, 2)(v3_ydim) == MaxPool((3, 3))(v3_ydim)
+	@assert HalfPlaneMaxPool2D((3, 3), 1)(v3_xdim) == MaxPool((3, 3))(v3_xdim)
+	@assert HalfPlaneMaxPool2D((3, 3), 2)(v3_ydim) == MaxPool((3, 3))(v3_ydim)
 end
 
 # ╔═╡ fcb47b57-6126-4e05-be66-4ee2ae11b12c
@@ -232,46 +249,45 @@ begin
 	append!(layers, [
 			HalfPlaneConv2D((w, w), nc_in=>nc_hd, LR),
 			HalfPlaneConv2D((w, w), nc_hd=>nc_hd, LR),
-			HalfPlaneMaxPool2D(2, 1),
+			HalfPlaneMaxPool2D((2, 2), 1),
 	])
 
-	x = img |> img_to_arr |> single_to_batch
+	x_img = img |> img_to_arr |> single_to_batch
 	Chain(layers...)(x) |> size
 end
 
 # ╔═╡ 623a0363-b324-4d03-bd80-1e0ed7c69300
 begin
-	x_img = randn(Float32, (4, 4, 1, 1))
 	#Upsample((2,2))(x_img) |> size, HeightOffsetMaxPool((2,2))(x_img) |> size
-	ConvTranspose((2,2), 1=>2)(x_img)
+	ConvTranspose((2,2), 3=>3)(x_img)[:,:,:,1] |> arr_to_img
 end
 
 # ╔═╡ 99fb471d-60d1-4bc9-9f72-92e9c9bdc3b3
 begin
 	level1 = Chain(
 		# offset convolution with padding
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# max-pool coarsening
-		HeightOffsetMaxPool((2,2)),
+		HalfPlaneMaxPool2D((2, 2), 1),
 		# offset convolution with padding
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# conv-tranpose up, doubling number of channels
 		ConvTranspose((2,2), nc_hd => 2*nc_hd, stride=2)
 	)
 		
 	level2 = Chain(
 		# offset convolution with padding
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# max-pool coarsening
-		HeightOffsetMaxPool((2,2)),
+		HalfPlaneMaxPool2D((2,2), 1),
 		# skip-connetion with concatenation across lower level
 		SkipConnection(level1, (mx, x) -> cat(mx, x, dims=3)),
 		# conv-transpose up in lower level doubled number channels
 		# so with concat that is (2+1)*nc_hd. Conv with padding
 		# to return to nc_hd channels
-		HeightOffsetConv2D((w,w), nc_hd*3 => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd*3 => nc_hd, LR),
 		# conv with padding to return to nc_hd channels
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# conv-transpose up doubling number of channels
 		ConvTranspose((2,2), nc_hd => 2*nc_hd, stride=2)
 	)
@@ -279,17 +295,17 @@ begin
 		
 	level3 = Chain(
 		# offset convolution with padding
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# max-pool coarsening
-		HeightOffsetMaxPool((2,2)),
+		HalfPlaneMaxPool2D((2,2), 1),
 		# skip-connetion with concatenation across lower level
 		SkipConnection(level2, (mx, x) -> cat(mx, x, dims=3)),
 		# conv-transpose up in lower level doubled number channels
 		# so with concat that is (2+1)*nc_hd. Conv with padding
 		# to return to nc_hd channels
-		HeightOffsetConv2D((w,w), nc_hd*3 => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd*3 => nc_hd, LR),
 		# conv with padding to return to nc_hd channels
-		HeightOffsetConv2D((w,w), nc_hd => nc_hd, LR),
+		HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 		# conv-transpose up doubling number of channels
 		ConvTranspose((2,2), nc_hd => 2*nc_hd, stride=2)
 	)
@@ -297,7 +313,7 @@ begin
 	num_features = 8
 	model = Chain(
 		level1,
-		HeightOffsetConv2D((w,w), 2*nc_hd => num_features, LR)
+		HalfPlaneConv2D((w,w), 2*nc_hd => num_features, LR)
 	)
 	img_intermediate = randn(Float32, (256, 256, nc_hd, 1))
 	model(img_intermediate) |> size
@@ -309,12 +325,12 @@ begin
 		lower_level = undef
 		
 		for n in 1:n_levels
-			layers = [
+			layers = Vector{Any}([
 				# offset convolution with padding
 				HalfPlaneConv2D((w,w), nc_hd => nc_hd, LR),
 				# max-pool coarsening
-				HalfPlaneMaxPool2D(2, 1)
-			]
+				HalfPlaneMaxPool2D((2,2), 1)
+			])
 			
 			if n > 1
 				append!(layers, [
@@ -334,7 +350,7 @@ begin
 				# conv-tranpose up, doubling number of channels
 				ConvTranspose((2,2), nc_hd => 2*nc_hd, stride=2)
 			])
-			
+
 			lower_level = Chain(layers...)
 		end
 		
@@ -347,23 +363,39 @@ begin
 		return model
 	end
 	
-	model_ssdn = make_ssdn(3, 5, 7)
-	model_ssdn(image) |> size, image |> size
+	model_ssdn = make_ssdn(3, 1, 3)
+	model_ssdn(x_img) |> x -> x[:,:,:,1] |> arr_to_img
+	@assert model_ssdn(x_img) |> size == size(x_img)
 end
 
 # ╔═╡ 53db6c56-8e3d-40af-b0e7-1df9ea555b88
 model_ssdn
 
+# ╔═╡ dc4e91ce-f674-4956-9936-9732dc2d2248
+begin
+	noise_dist = Normal(0, 0.2)
+	function add_noise(x)
+		x + rand(noise_dist, size(x))
+	end
+
+	add_noise(x_img)[:,:,:,1] |> arr_to_img
+end
+
+# ╔═╡ 5f23355e-ebad-4602-b61e-11f871ad0b9b
+begin
+end
+
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 ImageTransformations = "02fcd773-0e25-5acc-982a-7f6622650795"
 Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
-Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 
 [compat]
+Distributions = "~0.25.53"
 Flux = "~0.12.9"
 ImageTransformations = "~0.9.4"
 Images = "~0.25.1"
@@ -584,6 +616,12 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 deps = ["Mmap"]
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
+[[deps.DensityInterface]]
+deps = ["InverseFunctions", "Test"]
+git-tree-sha1 = "80c3e8639e3353e5d2912fb3a1916b8455e2494b"
+uuid = "b429d917-457f-4dbc-8f4c-0cc954292b1d"
+version = "0.4.0"
+
 [[deps.DiffResults]]
 deps = ["StaticArrays"]
 git-tree-sha1 = "c18e98cba888c6c25d1c3b048e4b3380ca956805"
@@ -605,6 +643,12 @@ version = "0.10.7"
 [[deps.Distributed]]
 deps = ["Random", "Serialization", "Sockets"]
 uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+
+[[deps.Distributions]]
+deps = ["ChainRulesCore", "DensityInterface", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SparseArrays", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test"]
+git-tree-sha1 = "5a4168170ede913a2cd679e53c2123cb4b889795"
+uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
+version = "0.25.53"
 
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
@@ -822,6 +866,12 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "129acf094d168394e80ee1dc4bc06ec835e510a3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "2.8.1+1"
+
+[[deps.HypergeometricFunctions]]
+deps = ["DualNumbers", "LinearAlgebra", "SpecialFunctions", "Test"]
+git-tree-sha1 = "65e4589030ef3c44d3b90bdc5aac462b4bb05567"
+uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
+version = "0.3.8"
 
 [[deps.IRTools]]
 deps = ["InteractiveUtils", "MacroTools", "Test"]
@@ -1320,6 +1370,12 @@ git-tree-sha1 = "b2a7af664e098055a7529ad1a900ded962bca488"
 uuid = "2f80f16e-611a-54ab-bc61-aa92de5b98fc"
 version = "8.44.0+0"
 
+[[deps.PDMats]]
+deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
+git-tree-sha1 = "e8185b83b9fc56eb6456200e873ce598ebc7f262"
+uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
+version = "0.11.7"
+
 [[deps.PNGFiles]]
 deps = ["Base64", "CEnum", "ImageCore", "IndirectArrays", "OffsetArrays", "libpng_jll"]
 git-tree-sha1 = "eb4dbb8139f6125471aa3da98fb70f02dc58e49c"
@@ -1410,6 +1466,12 @@ git-tree-sha1 = "ad368663a5e20dbb8d6dc2fddeefe4dae0781ae8"
 uuid = "ea2cea3b-5b76-57ae-a6ef-0a8af62496e1"
 version = "5.15.3+0"
 
+[[deps.QuadGK]]
+deps = ["DataStructures", "LinearAlgebra"]
+git-tree-sha1 = "78aadffb3efd2155af139781b8a8df1ef279ea39"
+uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+version = "2.4.2"
+
 [[deps.Quaternions]]
 deps = ["DualNumbers", "LinearAlgebra", "Random"]
 git-tree-sha1 = "522770af103809e8346aefa4b25c31fbec377ccf"
@@ -1486,6 +1548,18 @@ deps = ["UUIDs"]
 git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
+
+[[deps.Rmath]]
+deps = ["Random", "Rmath_jll"]
+git-tree-sha1 = "bf3188feca147ce108c76ad82c2792c57abe7b1f"
+uuid = "79098fc4-a85e-5d69-aa6a-4863f24498fa"
+version = "0.7.0"
+
+[[deps.Rmath_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "68db32dff12bb6127bac73c209881191bf0efbb7"
+uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
+version = "0.3.0+0"
 
 [[deps.Rotations]]
 deps = ["LinearAlgebra", "Quaternions", "Random", "StaticArrays", "Statistics"]
@@ -1586,11 +1660,21 @@ git-tree-sha1 = "8977b17906b0a1cc74ab2e3a05faa16cf08a8291"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.33.16"
 
+[[deps.StatsFuns]]
+deps = ["ChainRulesCore", "HypergeometricFunctions", "InverseFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
+git-tree-sha1 = "25405d7016a47cf2bd6cd91e66f4de437fd54a07"
+uuid = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
+version = "0.9.16"
+
 [[deps.StructArrays]]
 deps = ["Adapt", "DataAPI", "StaticArrays", "Tables"]
 git-tree-sha1 = "57617b34fa34f91d536eb265df67c2d4519b8b98"
 uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 version = "0.6.5"
+
+[[deps.SuiteSparse]]
+deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
+uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -1927,6 +2011,7 @@ version = "0.9.1+5"
 # ╠═0256d08b-84b2-49d9-b78a-e994b11bd4c7
 # ╠═ac786463-c1a7-4b78-a560-ccb2301fd25a
 # ╠═a0729868-a20e-4982-9f03-c30d59307e46
+# ╠═a2ee5775-29be-4b32-b7b4-bdf047d99ac5
 # ╟─b4ebf1c0-68a7-4372-bf9a-1e6c35b54255
 # ╠═d076aa88-ca21-440e-b514-a1dc22cf487b
 # ╠═fcb47b57-6126-4e05-be66-4ee2ae11b12c
@@ -1938,5 +2023,7 @@ version = "0.9.1+5"
 # ╠═99fb471d-60d1-4bc9-9f72-92e9c9bdc3b3
 # ╠═cbab1f07-3aa5-4c79-ad5b-ae69b35db8eb
 # ╠═53db6c56-8e3d-40af-b0e7-1df9ea555b88
+# ╠═dc4e91ce-f674-4956-9936-9732dc2d2248
+# ╠═5f23355e-ebad-4602-b61e-11f871ad0b9b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
